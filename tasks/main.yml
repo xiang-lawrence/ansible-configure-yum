@@ -1,0 +1,32 @@
+---
+
+- name: Test distribution
+  assert:
+    that: ansible_os_family == "RedHat"
+
+- name: Create playbook-unique fact
+  set_fact:
+    yumrepo_unique: "{{ ansible_date_time.iso8601_micro }}"
+  when: yumrepo_unique is not defined
+
+- name: Configure additional repos in /etc/yum.repos.d/
+  template:
+    src: yum_repo.j2
+    dest: /etc/yum.repos.d/{{ item.key }}.repo
+  register: repo_file
+  with_dict: yumrepo_repos
+  when: yumrepo_repos.keys() | length > 0
+  notify:
+    - Delete unmanaged repos
+
+- name: Import GPG key if specified
+  rpm_key:
+    state: present
+    key: "{{ item.value.gpgkey |
+      replace('$releasever', ansible_distribution_major_version) |
+      replace('$arch', ansible_architecture) |
+      replace('$basearch', ansible_architecture) }}"
+  with_dict: yumrepo_repos
+  when: >
+    item.value.gpgkey is defined and
+    item.value.gpgcheck == 1
